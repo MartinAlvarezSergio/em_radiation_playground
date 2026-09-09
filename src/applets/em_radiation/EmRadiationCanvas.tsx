@@ -19,12 +19,24 @@ import {
   wienPeakNm
 } from "./blackbody";
 import { drawEmitterPortrait, ensureEmitterImage } from "./emitterVisuals";
+import {
+  WAVE_LAMBDA_DEFAULT_NM,
+  WAVE_LAMBDA_MAX_NM,
+  WAVE_LAMBDA_MIN_NM,
+  clampWaveLambdaNm,
+  formatFrequency,
+  formatWavelength,
+  frequencyHzFromLambdaNm,
+  lambdaNmFromFrequencyHz
+} from "./emWave";
 import { drawSpectrumPlot } from "./spectrumRender";
+import { drawTravelingEmWave, drawWavelengthSwatch } from "./waveRender";
 import type {
   AppearanceMode,
   AtomicSpeciesId,
   AtomicViewMode,
   EmModeId,
+  EmWaveViewMode,
   EmitterId
 } from "./types";
 
@@ -50,9 +62,40 @@ function sliderToTemp(slider: number): number {
   return clampTempK(10 ** (min + t * (max - min)));
 }
 
+function lambdaToSlider(lambdaNm: number): number {
+  const min = Math.log10(WAVE_LAMBDA_MIN_NM);
+  const max = Math.log10(WAVE_LAMBDA_MAX_NM);
+  return ((Math.log10(clampWaveLambdaNm(lambdaNm)) - min) / (max - min)) * 100;
+}
+
+function sliderToLambda(slider: number): number {
+  const min = Math.log10(WAVE_LAMBDA_MIN_NM);
+  const max = Math.log10(WAVE_LAMBDA_MAX_NM);
+  const t = Math.min(100, Math.max(0, slider)) / 100;
+  return clampWaveLambdaNm(10 ** (min + t * (max - min)));
+}
+
+const FREQ_MIN_HZ = frequencyHzFromLambdaNm(WAVE_LAMBDA_MAX_NM);
+const FREQ_MAX_HZ = frequencyHzFromLambdaNm(WAVE_LAMBDA_MIN_NM);
+
+function freqToSlider(freqHz: number): number {
+  const min = Math.log10(FREQ_MIN_HZ);
+  const max = Math.log10(FREQ_MAX_HZ);
+  const f = Math.min(FREQ_MAX_HZ, Math.max(FREQ_MIN_HZ, freqHz));
+  return ((Math.log10(f) - min) / (max - min)) * 100;
+}
+
+function sliderToFreq(slider: number): number {
+  const min = Math.log10(FREQ_MIN_HZ);
+  const max = Math.log10(FREQ_MAX_HZ);
+  const t = Math.min(100, Math.max(0, slider)) / 100;
+  return 10 ** (min + t * (max - min));
+}
+
 const MODE_OPTIONS: { id: EmModeId; label: string }[] = [
   { id: "blackbody", label: "Blackbody (thermal spectrum)" },
-  { id: "atomic-lines", label: "Atomic absorption & emission" }
+  { id: "atomic-lines", label: "Atomic absorption & emission" },
+  { id: "em-wave", label: "EM wave (E & B)" }
 ];
 
 export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element {
@@ -67,19 +110,25 @@ export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element
   const [showUsualTemps, setShowUsualTemps] = useState(false);
   const [species, setSpecies] = useState<AtomicSpeciesId>("hydrogen");
   const [atomicView, setAtomicView] = useState<AtomicViewMode>("emission");
+  const [waveLambdaNm, setWaveLambdaNm] = useState(WAVE_LAMBDA_DEFAULT_NM);
+  const [wavePlaying, setWavePlaying] = useState(true);
+  const [waveView, setWaveView] = useState<EmWaveViewMode>("wave");
 
   const reducedMotion = host?.readReducedMotion?.() ?? false;
-  void reducedMotion;
 
   const joke = mode === "blackbody" && emitter === "human" ? humanJoke(tempK) : null;
   const preset = emitterPreset(emitter);
   const speciesMeta = atomicSpecies(species);
+  const waveFreqHz = frequencyHzFromLambdaNm(waveLambdaNm);
 
   const spectrum = useMemo(() => {
     if (mode === "blackbody") {
       return buildBlackbodySpectrum(tempK, { normalize: intensityScale === "relative" });
     }
-    return buildAtomicSpectrum(species, atomicView);
+    if (mode === "atomic-lines") {
+      return buildAtomicSpectrum(species, atomicView);
+    }
+    return [];
   }, [mode, tempK, species, atomicView, intensityScale]);
 
   const usualOverlays = useMemo(() => {
@@ -99,7 +148,11 @@ export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element
     }));
   }, [mode, showUsualTemps, intensityScale]);
 
+  // Spectrum / atomic plots (static).
   useEffect(() => {
+    if (mode === "em-wave") {
+      return;
+    }
     const canvas = spectrumRef.current;
     if (!canvas) {
       return;
@@ -149,6 +202,60 @@ export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element
     }
   }, [spectrum, mode, tempK, atomicView, speciesMeta, intensityScale, usualOverlays, showUsualTemps]);
 
+  // Traveling EM wave animation.
+  useEffect(() => {
+    if (mode !== "em-wave") {
+      return;
+    }
+    const canvas = spectrumRef.current;
+    if (!canvas) {
+      return;
+    }
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return;
+    }
+
+    let raf = 0;
+    let phase = 0;
+    let travel01 = 0;
+    let last = performance.now();
+    const paused = reducedMotion || !wavePlaying;
+
+    const frame = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      // Oscillation phase: faster for higher frequency (soft-capped).
+      const fNorm =
+        (Math.log10(waveFreqHz) - Math.log10(FREQ_MIN_HZ)) /
+        (Math.log10(FREQ_MAX_HZ) - Math.log10(FREQ_MIN_HZ));
+      const omega = 1.6 + 3.4 * Math.min(1, Math.max(0, fNorm));
+      phase += omega * dt;
+      // Packet travel: same visual “c” for all λ; wraps 0→1.
+      travel01 = (travel01 + dt * 0.28) % 1;
+      drawTravelingEmWave(ctx, SPECTRUM_W, SPECTRUM_H, {
+        lambdaNm: waveLambdaNm,
+        phaseRad: phase,
+        travel01,
+        view: waveView
+      });
+      raf = requestAnimationFrame(frame);
+    };
+
+    if (paused) {
+      drawTravelingEmWave(ctx, SPECTRUM_W, SPECTRUM_H, {
+        lambdaNm: waveLambdaNm,
+        phaseRad: phase,
+        travel01,
+        view: waveView
+      });
+      return;
+    }
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, [mode, waveLambdaNm, waveFreqHz, wavePlaying, waveView, reducedMotion]);
+
+  // Right panel: emitter / atom / wavelength swatch.
   useEffect(() => {
     const canvas = portraitRef.current;
     if (!canvas) {
@@ -166,8 +273,9 @@ export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element
           drawEmitterPortrait(again, PORTRAIT_W, PORTRAIT_H, emitter, tempK, appearance);
         }
       });
+    } else if (mode === "em-wave") {
+      drawWavelengthSwatch(ctx, PORTRAIT_W, PORTRAIT_H, waveLambdaNm);
     } else {
-      // Simple atom cartoon for atomic mode.
       ctx.clearRect(0, 0, PORTRAIT_W, PORTRAIT_H);
       const bg = ctx.createLinearGradient(0, 0, 0, PORTRAIT_H);
       bg.addColorStop(0, "#0a121c");
@@ -203,7 +311,7 @@ export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element
       ctx.fillStyle = "rgba(180, 200, 230, 0.85)";
       ctx.fillText(atomicView === "emission" ? "emission" : "absorption", cx, PORTRAIT_H - 14);
     }
-  }, [mode, emitter, tempK, appearance, speciesMeta, atomicView]);
+  }, [mode, emitter, tempK, appearance, speciesMeta, atomicView, waveLambdaNm]);
 
   function onUsualTemp(): void {
     setTempK(preset.usualTempK);
@@ -214,16 +322,24 @@ export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element
     setTempK(emitterPreset(next).usualTempK);
   }
 
+  function onLambdaChange(nextNm: number): void {
+    setWaveLambdaNm(clampWaveLambdaNm(nextNm));
+  }
+
+  function onFreqChange(nextHz: number): void {
+    setWaveLambdaNm(lambdaNmFromFrequencyHz(nextHz));
+  }
+
+  const subtitle =
+    mode === "blackbody"
+      ? "Change the temperature and watch the variations of the thermal spectrum and the observed light"
+      : mode === "em-wave"
+        ? undefined
+        : "Emission lines vs absorption dips for a few teaching atoms.";
+
   return (
     <div className="gravity-layout">
-      <ControlCard
-        title="Light, heat, and spectra"
-        subtitle={
-          mode === "blackbody"
-            ? "Change the temperature and watch the variations of the thermal spectrum and the observed light"
-            : "Emission lines vs absorption dips for a few teaching atoms."
-        }
-      >
+      <ControlCard title="Light, heat, and spectra" subtitle={subtitle}>
         <div className="control-grid">
           <label className="control-span-2">
             Mode
@@ -293,13 +409,13 @@ export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element
                 </select>
               </label>
 
-              <label className="control-span-2 checkbox-row">
+              <label className="checkbox control-span-2">
+                <span>Show usual temperatures</span>
                 <input
                   type="checkbox"
                   checked={showUsualTemps}
                   onChange={(event) => setShowUsualTemps(event.target.checked)}
                 />
-                <span>Show usual temperatures (human · bulb · star) on the graph</span>
               </label>
 
               <label className="control-span-2">
@@ -313,6 +429,65 @@ export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element
                   <option value="em-false-color">EM false-color (IR / optical / UV)</option>
                 </select>
               </label>
+            </>
+          ) : mode === "em-wave" ? (
+            <>
+              <label className="control-span-2">
+                Picture
+                <select
+                  value={waveView}
+                  onChange={(event) => setWaveView(event.target.value as EmWaveViewMode)}
+                  aria-label="Wave or photon picture"
+                >
+                  <option value="wave">Wave (extended E &amp; B)</option>
+                  <option value="photon">Photon (short packet)</option>
+                </select>
+              </label>
+
+              <label className="control-span-2">
+                <span className="slider-label">
+                  <span>Wavelength</span>
+                  <strong>{formatWavelength(waveLambdaNm)}</strong>
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={0.1}
+                  value={lambdaToSlider(waveLambdaNm)}
+                  onChange={(event) => onLambdaChange(sliderToLambda(Number(event.target.value)))}
+                  aria-label="Wavelength"
+                />
+              </label>
+
+              <label className="control-span-2">
+                <span className="slider-label">
+                  <span>Frequency</span>
+                  <strong>{formatFrequency(waveFreqHz)}</strong>
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={0.1}
+                  value={freqToSlider(waveFreqHz)}
+                  onChange={(event) => onFreqChange(sliderToFreq(Number(event.target.value)))}
+                  aria-label="Frequency"
+                />
+              </label>
+
+              <div className="button-row control-span-2">
+                <button type="button" onClick={() => onLambdaChange(WAVE_LAMBDA_DEFAULT_NM)}>
+                  Green light (550 nm)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWavePlaying((p) => !p)}
+                  disabled={reducedMotion}
+                >
+                  {wavePlaying && !reducedMotion ? "Pause" : "Play"}
+                </button>
+              </div>
             </>
           ) : (
             <>
@@ -356,7 +531,7 @@ export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element
           width={SPECTRUM_W}
           height={SPECTRUM_H}
           className="em-radiation-spectrum"
-          aria-label="Spectrum plot"
+          aria-label={mode === "em-wave" ? "Traveling EM wave" : "Spectrum plot"}
         />
         <div className="em-radiation-side">
           <canvas
@@ -364,7 +539,13 @@ export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element
             width={PORTRAIT_W}
             height={PORTRAIT_H}
             className="em-radiation-portrait"
-            aria-label={mode === "blackbody" ? "Emitter appearance" : "Atom sketch"}
+            aria-label={
+              mode === "blackbody"
+                ? "Emitter appearance"
+                : mode === "em-wave"
+                  ? "Wavelength color swatch"
+                  : "Atom sketch"
+            }
           />
           {joke ? (
             <p className="em-radiation-joke" role="status">

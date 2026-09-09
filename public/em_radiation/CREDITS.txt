@@ -1,0 +1,8 @@
+Emitter photos for the Light, heat, and spectra applet (generated illustrative assets).
+
+- bulb.png — Edison-style lamp (transparent background)
+- human.png — standing person (transparent background)
+- star.png — dramatic Sun with prominences (transparent background)
+
+Legacy JPG sources may remain in this folder; the applet loads the PNGs.
+Tinted at runtime by temperature / appearance mode; not scientific photographs.

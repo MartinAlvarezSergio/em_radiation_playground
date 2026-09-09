@@ -1,0 +1,24 @@
+export type EmModeId = "blackbody" | "atomic-lines";
+
+export type EmitterId = "bulb" | "human" | "star";
+
+export type AppearanceMode = "human-seen" | "em-false-color";
+
+export type AtomicSpeciesId = "hydrogen" | "sodium";
+
+export type AtomicViewMode = "emission" | "absorption";
+
+export type EmitterPreset = {
+  id: EmitterId;
+  label: string;
+  blurb: string;
+  /** Usual / default temperature (K). */
+  usualTempK: number;
+};
+
+export type SpectrumSample = {
+  /** Wavelength in nm. */
+  lambdaNm: number;
+  /** Relative spectral radiance (arbitrary units, peak-normalized in plot). */
+  value: number;
+};

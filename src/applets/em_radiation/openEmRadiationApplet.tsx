@@ -6,7 +6,7 @@ export function openEmRadiationApplet(options?: OpenAppletOptions): OpenedApplet
     id: "em-radiation",
     title: "Light, heat, and spectra",
     description:
-      "Blackbody spectra with emitter presets and human-seen vs EM false-color views, plus a schematic atomic absorption/emission mode.",
+      "Atomic spectra with line zoom and energy levels, plus blackbody and EM-wave views.",
     close: () => {
       options?.host?.onClose?.();
     },

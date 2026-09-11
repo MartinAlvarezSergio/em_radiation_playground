@@ -1,12 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppletHostAdapter } from "../../core/host";
 import { ControlCard } from "../../ui/ControlCard";
-import {
-  ATOMIC_NOTE,
-  ATOMIC_SPECIES,
-  atomicSpecies,
-  buildAtomicSpectrum
-} from "./atomicLines";
+import { AtomicSpectraPanel } from "./AtomicSpectraPanel";
 import {
   EMITTER_PRESETS,
   TEMP_MAX_K,
@@ -33,8 +28,6 @@ import { drawSpectrumPlot } from "./spectrumRender";
 import { drawTravelingEmWave, drawWavelengthSwatch } from "./waveRender";
 import type {
   AppearanceMode,
-  AtomicSpeciesId,
-  AtomicViewMode,
   EmModeId,
   EmWaveViewMode,
   EmitterId
@@ -93,8 +86,8 @@ function sliderToFreq(slider: number): number {
 }
 
 const MODE_OPTIONS: { id: EmModeId; label: string }[] = [
-  { id: "blackbody", label: "Blackbody (thermal spectrum)" },
-  { id: "atomic-lines", label: "Atomic absorption & emission" },
+  { id: "atomic-lines", label: "Atomic spectra" },
+  { id: "blackbody", label: "Blackbody" },
   { id: "em-wave", label: "EM wave (E & B)" }
 ];
 
@@ -102,14 +95,12 @@ export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element
   const spectrumRef = useRef<HTMLCanvasElement | null>(null);
   const portraitRef = useRef<HTMLCanvasElement | null>(null);
 
-  const [mode, setMode] = useState<EmModeId>("blackbody");
+  const [mode, setMode] = useState<EmModeId>("atomic-lines");
   const [emitter, setEmitter] = useState<EmitterId>("bulb");
   const [tempK, setTempK] = useState(emitterPreset("bulb").usualTempK);
   const [appearance, setAppearance] = useState<AppearanceMode>("human-seen");
   const [intensityScale, setIntensityScale] = useState<"relative" | "absolute">("absolute");
   const [showUsualTemps, setShowUsualTemps] = useState(false);
-  const [species, setSpecies] = useState<AtomicSpeciesId>("hydrogen");
-  const [atomicView, setAtomicView] = useState<AtomicViewMode>("emission");
   const [waveLambdaNm, setWaveLambdaNm] = useState(WAVE_LAMBDA_DEFAULT_NM);
   const [wavePlaying, setWavePlaying] = useState(true);
   const [waveView, setWaveView] = useState<EmWaveViewMode>("wave");
@@ -118,18 +109,14 @@ export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element
 
   const joke = mode === "blackbody" && emitter === "human" ? humanJoke(tempK) : null;
   const preset = emitterPreset(emitter);
-  const speciesMeta = atomicSpecies(species);
   const waveFreqHz = frequencyHzFromLambdaNm(waveLambdaNm);
 
   const spectrum = useMemo(() => {
     if (mode === "blackbody") {
       return buildBlackbodySpectrum(tempK, { normalize: intensityScale === "relative" });
     }
-    if (mode === "atomic-lines") {
-      return buildAtomicSpectrum(species, atomicView);
-    }
     return [];
-  }, [mode, tempK, species, atomicView, intensityScale]);
+  }, [mode, tempK, intensityScale]);
 
   const usualOverlays = useMemo(() => {
     if (mode !== "blackbody" || !showUsualTemps) {
@@ -148,9 +135,9 @@ export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element
     }));
   }, [mode, showUsualTemps, intensityScale]);
 
-  // Spectrum / atomic plots (static).
+  // Blackbody plot (static).
   useEffect(() => {
-    if (mode === "em-wave") {
+    if (mode !== "blackbody") {
       return;
     }
     const canvas = spectrumRef.current;
@@ -187,20 +174,8 @@ export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element
           yAxisLabel: "relative intensity"
         });
       }
-    } else {
-      drawSpectrumPlot(ctx, SPECTRUM_W, SPECTRUM_H, spectrum, {
-        title:
-          atomicView === "emission"
-            ? `${speciesMeta.label} emission lines`
-            : `${speciesMeta.label} absorption against a continuum`,
-        logX: false,
-        showOpticalBand: true,
-        lineMarkers: speciesMeta.lines,
-        lambdaMinNm: 90,
-        lambdaMaxNm: 900
-      });
     }
-  }, [spectrum, mode, tempK, atomicView, speciesMeta, intensityScale, usualOverlays, showUsualTemps]);
+  }, [spectrum, mode, tempK, intensityScale, usualOverlays, showUsualTemps]);
 
   // Traveling EM wave animation.
   useEffect(() => {
@@ -255,7 +230,7 @@ export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element
     return () => cancelAnimationFrame(raf);
   }, [mode, waveLambdaNm, waveFreqHz, wavePlaying, waveView, reducedMotion]);
 
-  // Right panel: emitter / atom / wavelength swatch.
+  // Right panel: emitter / wavelength swatch.
   useEffect(() => {
     const canvas = portraitRef.current;
     if (!canvas) {
@@ -275,43 +250,8 @@ export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element
       });
     } else if (mode === "em-wave") {
       drawWavelengthSwatch(ctx, PORTRAIT_W, PORTRAIT_H, waveLambdaNm);
-    } else {
-      ctx.clearRect(0, 0, PORTRAIT_W, PORTRAIT_H);
-      const bg = ctx.createLinearGradient(0, 0, 0, PORTRAIT_H);
-      bg.addColorStop(0, "#0a121c");
-      bg.addColorStop(1, "#151c2a");
-      ctx.fillStyle = bg;
-      ctx.fillRect(0, 0, PORTRAIT_W, PORTRAIT_H);
-      const cx = PORTRAIT_W / 2;
-      const cy = PORTRAIT_H / 2;
-      ctx.strokeStyle = "rgba(140, 190, 255, 0.45)";
-      ctx.lineWidth = 1.5;
-      for (const r of [36, 58, 82]) {
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      ctx.fillStyle = "rgba(255, 210, 120, 0.95)";
-      ctx.beginPath();
-      ctx.arc(cx, cy, 12, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "rgba(120, 200, 255, 0.95)";
-      for (let i = 0; i < 3; i += 1) {
-        const a = (i / 3) * Math.PI * 2 + 0.4;
-        const r = 36 + i * 22;
-        ctx.beginPath();
-        ctx.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r, 5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.fillStyle = "rgba(230, 236, 245, 0.9)";
-      ctx.font = "600 16px system-ui, sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText(speciesMeta.label, cx, PORTRAIT_H - 36);
-      ctx.font = "500 14px system-ui, sans-serif";
-      ctx.fillStyle = "rgba(180, 200, 230, 0.85)";
-      ctx.fillText(atomicView === "emission" ? "emission" : "absorption", cx, PORTRAIT_H - 14);
     }
-  }, [mode, emitter, tempK, appearance, speciesMeta, atomicView, waveLambdaNm]);
+  }, [mode, emitter, tempK, appearance, waveLambdaNm]);
 
   function onUsualTemp(): void {
     setTempK(preset.usualTempK);
@@ -330,31 +270,27 @@ export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element
     setWaveLambdaNm(lambdaNmFromFrequencyHz(nextHz));
   }
 
-  const subtitle =
-    mode === "blackbody"
-      ? "Change the temperature and watch the variations of the thermal spectrum and the observed light"
-      : mode === "em-wave"
-        ? undefined
-        : "Emission lines vs absorption dips for a few teaching atoms.";
+  const modeControl = (
+    <label className="em-mode-control">
+      Mode
+      <select value={mode} onChange={(event) => setMode(event.target.value as EmModeId)}
+        aria-label="Radiation mode">
+        {MODE_OPTIONS.map((option) => (
+          <option key={option.id} value={option.id}>{option.label}</option>
+        ))}
+      </select>
+    </label>
+  );
+
+  if (mode === "atomic-lines") {
+    return <AtomicSpectraPanel modeControl={modeControl} />;
+  }
 
   return (
     <div className="gravity-layout">
-      <ControlCard title="Light, heat, and spectra" subtitle={subtitle}>
+      <ControlCard title="Light, heat, and spectra">
         <div className="control-grid">
-          <label className="control-span-2">
-            Mode
-            <select
-              value={mode}
-              onChange={(event) => setMode(event.target.value as EmModeId)}
-              aria-label="Radiation mode"
-            >
-              {MODE_OPTIONS.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="control-span-2">{modeControl}</div>
 
           {mode === "blackbody" ? (
             <>
@@ -430,7 +366,7 @@ export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element
                 </select>
               </label>
             </>
-          ) : mode === "em-wave" ? (
+          ) : (
             <>
               <label className="control-span-2">
                 Picture
@@ -489,38 +425,7 @@ export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element
                 </button>
               </div>
             </>
-          ) : (
-            <>
-              <label className="control-span-2">
-                Atom
-                <select
-                  value={species}
-                  onChange={(event) => setSpecies(event.target.value as AtomicSpeciesId)}
-                  aria-label="Atomic species"
-                >
-                  {ATOMIC_SPECIES.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <p className="subtle control-span-2">{speciesMeta.blurb}</p>
 
-              <label className="control-span-2">
-                View
-                <select
-                  value={atomicView}
-                  onChange={(event) => setAtomicView(event.target.value as AtomicViewMode)}
-                  aria-label="Emission or absorption"
-                >
-                  <option value="emission">Emission lines</option>
-                  <option value="absorption">Absorption against a continuum</option>
-                </select>
-              </label>
-
-              <p className="gravity-scenario-note control-span-2">{ATOMIC_NOTE}</p>
-            </>
           )}
         </div>
       </ControlCard>
@@ -540,11 +445,7 @@ export function EmRadiationCanvas({ host }: EmRadiationCanvasProps): JSX.Element
             height={PORTRAIT_H}
             className="em-radiation-portrait"
             aria-label={
-              mode === "blackbody"
-                ? "Emitter appearance"
-                : mode === "em-wave"
-                  ? "Wavelength color swatch"
-                  : "Atom sketch"
+              mode === "blackbody" ? "Emitter appearance" : "Wavelength color swatch"
             }
           />
           {joke ? (

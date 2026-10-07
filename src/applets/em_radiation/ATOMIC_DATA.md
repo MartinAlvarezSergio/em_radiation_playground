@@ -1,10 +1,11 @@
 # Atomic spectra teaching model
 
 The atomic view opens by default at `?applet=em-radiation`. Select H, He, Na, or Ca⁺,
-choose emission/absorption/continuum, and select a line in the plot or the right-hand
-reference. **Line zoom** shows an 8 nm window around that line; **Visible** restores
-380–750 nm. Line selection also updates the photon color and the energy-level aid.
-Plot lines and reference buttons support keyboard selection.
+choose emission/absorption/continuum, and select a line by clicking it in the plot or in
+the line reference list in the controls panel. **Line zoom** shows an 8 nm window around
+that line; **Visible** restores 380–750 nm. Line selection also updates the photon color,
+the readouts and the energy-level aid. The line reference buttons support keyboard
+selection.
 
 ## Wavelengths
 

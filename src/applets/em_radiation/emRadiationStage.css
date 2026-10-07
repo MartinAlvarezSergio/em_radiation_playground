@@ -1,0 +1,117 @@
+/* Light, heat, and spectra on the applet stage, scoped by rootClassName="em-stage".
+   This file loads before src/styles.css, so rules that compete with the global atomic-*
+   styles carry :root for specificity. */
+
+/* One card on the right: the numbers, then the picture for the current mode. */
+.em-stage .stage-readouts {
+  width: 250px;
+  min-width: 0;
+  max-width: none;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+}
+
+.em-card-figure {
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.em-inset-canvas {
+  width: 100%;
+  border-radius: 8px;
+}
+
+/* Line reference list (atomic spectra). */
+.em-line-list {
+  display: grid;
+  gap: 4px;
+}
+
+:root .em-stage .em-line {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0.3rem 0.55rem;
+  text-align: left;
+}
+
+.em-line-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.em-line strong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.em-color-dot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  vertical-align: -2px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+.em-joke {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #ffd7b0;
+}
+
+/* Energy-level aid inside the inset (the component is shared with the old layout). */
+:root .em-stage .atomic-transition {
+  display: grid;
+  gap: 4px;
+  border: 0;
+  padding: 0;
+  grid-column: auto;
+  grid-row: auto;
+}
+
+:root .em-stage .atomic-transition svg {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+:root .em-stage .atomic-transition svg text {
+  fill: rgba(235, 232, 226, 0.88);
+  font-size: 13px;
+}
+
+:root .em-stage .atomic-transition svg .atomic-svg-muted {
+  fill: rgba(200, 196, 188, 0.7);
+  font-size: 12px;
+}
+
+:root .em-stage .atomic-reference-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: rgba(235, 232, 226, 0.8);
+}
+
+:root .em-stage .atomic-reference-heading span {
+  color: rgba(200, 196, 188, 0.7);
+}
+
+/* Photon energy is already a readout. */
+:root .em-stage .atomic-energy {
+  display: none;
+}
+
+/* Small screens: panels sit below the experiment at full width. */
+@media (max-width: 760px) {
+  .em-stage .stage-readouts {
+    width: auto;
+    max-height: none;
+  }
+}

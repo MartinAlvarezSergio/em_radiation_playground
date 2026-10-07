@@ -16,6 +16,11 @@ export type WaveDrawOptions = {
   /** Photon packet center 0…1 along the travel axis (wraps). */
   travel01: number;
   view: EmWaveViewMode;
+  /**
+   * Own background, title lines and colour strip (default true). The applet stage turns
+   * this off: it draws the wave over its own surface and shows λ, f and band as readouts.
+   */
+  chrome?: boolean;
 };
 
 /**
@@ -29,36 +34,39 @@ export function drawTravelingEmWave(
   options: WaveDrawOptions
 ): void {
   const { lambdaNm, phaseRad, travel01, view } = options;
-  ctx.clearRect(0, 0, width, height);
-  const bg = ctx.createLinearGradient(0, 0, 0, height);
-  bg.addColorStop(0, "#071018");
-  bg.addColorStop(1, "#121a28");
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, width, height);
-
+  const chrome = options.chrome !== false;
   const { color, band } = monochromaticSeenColor(lambdaNm);
   const fHz = frequencyHzFromLambdaNm(lambdaNm);
   const cycles = schematicCyclesOnScreen(lambdaNm);
 
-  ctx.fillStyle = "rgba(230, 238, 250, 0.95)";
-  ctx.font = "700 13px system-ui, sans-serif";
-  ctx.textAlign = "left";
-  ctx.fillText(
-    view === "photon"
-      ? `Photon · λ = ${formatWavelength(lambdaNm)} · f = ${formatFrequency(fHz)}`
-      : `EM wave · λ = ${formatWavelength(lambdaNm)} · f = ${formatFrequency(fHz)}`,
-    14,
-    20
-  );
-  ctx.font = "500 11px system-ui, sans-serif";
-  ctx.fillStyle = "rgba(180, 200, 230, 0.9)";
-  ctx.fillText(
-    view === "photon"
-      ? "Localized ~2λ packet · wraps around when it leaves the right edge"
-      : "E ⟂ B ⟂ travel — peaks pack tighter as λ shrinks",
-    14,
-    36
-  );
+  if (chrome) {
+    ctx.clearRect(0, 0, width, height);
+    const bg = ctx.createLinearGradient(0, 0, 0, height);
+    bg.addColorStop(0, "#071018");
+    bg.addColorStop(1, "#121a28");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.fillStyle = "rgba(230, 238, 250, 0.95)";
+    ctx.font = "700 13px system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(
+      view === "photon"
+        ? `Photon · λ = ${formatWavelength(lambdaNm)} · f = ${formatFrequency(fHz)}`
+        : `EM wave · λ = ${formatWavelength(lambdaNm)} · f = ${formatFrequency(fHz)}`,
+      14,
+      20
+    );
+    ctx.font = "500 11px system-ui, sans-serif";
+    ctx.fillStyle = "rgba(180, 200, 230, 0.9)";
+    ctx.fillText(
+      view === "photon"
+        ? "Localized ~2λ packet · wraps around when it leaves the right edge"
+        : "E ⟂ B ⟂ travel — peaks pack tighter as λ shrinks",
+      14,
+      36
+    );
+  }
 
   const originX = 48;
   const originY = height * 0.54;
@@ -103,6 +111,9 @@ export function drawTravelingEmWave(
     });
   }
 
+  if (!chrome) {
+    return;
+  }
   // Tint strip matching the photon / wave color.
   ctx.fillStyle = rgbCss(color, band === "optical" ? 0.95 : 0.55);
   ctx.fillRect(14, height - 22, width - 28, 8);
